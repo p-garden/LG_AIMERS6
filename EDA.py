@@ -13,7 +13,11 @@
 #     name: python3
 # ---
 
+# + [markdown] jp-MarkdownHeadingCollapsed=true
 # # 1. 결측치 분석
+# -
+
+
 
 # +
 import pandas as pd
@@ -429,6 +433,466 @@ thawed_embryo_zero_ratio
 # 동결 배아 사용 여부  나 해동된 배아 수 를 활용하여  
 # 배아 동결 여부 속성 생성 후 해당 칼럼은 삭제처리
 
+# + [markdown] jp-MarkdownHeadingCollapsed=true
 # ##### 난자 채취 경과일 칼럼 분석
+
+# +
+# 난자 채취 경과일이 NULL인 데이터 필터링
+egg_retrieval_null = df[df['난자 채취 경과일'].isnull()]
+
+# 난자 채취 경과일이 NULL인 경우의 시술 유형 분포 확인
+null_egg_retrieval_procedure_counts = egg_retrieval_null['시술 유형'].value_counts(normalize=True) * 100
+
+# 결과 출력
+null_egg_retrieval_procedure_counts
+
+
+# +
+# 난자 채취 경과일이 Non-NULL인 데이터 필터링
+egg_retrieval_non_null = df[df['난자 채취 경과일'].notnull()]
+
+# 1. 시술 유형 & 특정 시술 유형 분포 확인
+procedure_counts = egg_retrieval_non_null[['시술 유형', '특정 시술 유형']].value_counts()
+
+# 2. 난자 채취 경과일 분포 시각화
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(8, 5))
+egg_retrieval_non_null['난자 채취 경과일'].hist(bins=20, edgecolor='black')
+plt.title("난자 채취 경과일 분포")
+plt.xlabel("난자 채취 경과일 (일)")
+plt.ylabel("빈도")
+plt.show()
+
+# 시술 유형 및 특정 시술 유형 출력
+procedure_counts
+
+
+# +
+# IVF 시술을 받은 경우 중 난자 채취 경과일이 NULL인 데이터 필터링
+ivf_egg_retrieval_null = df[(df['시술 유형'] == 'IVF') & (df['난자 채취 경과일'].isnull())]
+
+# IVF 시술 중 난자 채취 경과일이 NULL인 경우의 비율 계산
+ivf_egg_retrieval_null_ratio = (len(ivf_egg_retrieval_null) / len(df[df['시술 유형'] == 'IVF'])) * 100
+
+# 결과 출력
+ivf_egg_retrieval_null_ratio
+
+
+# +
+# IVF 시술을 받은 경우 중 난자 채취 경과일이 NULL인 데이터 필터링
+ivf_egg_retrieval_null = df[(df['시술 유형'] == 'IVF') & (df['난자 채취 경과일'].isnull())]
+# 3가지 경우를 모두 만족하지 않는 데이터 필터링
+frozen_egg = ivf_egg_retrieval_null['해동 난자 수'] >= 1  # 냉동 난자 사용 
+donor_egg = ivf_egg_retrieval_null['난자 출처'] == '기증 제공'  # 기증 난자 사용 
+frozen_embryo = ivf_egg_retrieval_null['동결 배아 사용 여부'] == 1  # 해동된 배아 
+donor_embryo = ivf_egg_retrieval_null['기증 배아 사용 여부'] == 1  # 기증 배아 
+
+# 4가지 경우 중 하나라도 만족하는 데이터 개수
+special_case_cnt = (frozen_egg | donor_egg | frozen_embryo | donor_embryo).sum()
+
+# 전체 IVF 중 난자 채취 경과일이 NULL인 경우 개수
+total_ivf_egg_retrieval_null = len(ivf_egg_retrieval_null)
+
+# 4가지 경우를 만족하는 비율 계산
+special_case_ratio = (special_case_cnt / total_ivf_egg_retrieval_null) * 100
+
+# 결과 출력
+special_case_ratio, special_case_cnt
+
+
+# +
+# 4가지 경우를 모두 만족하지 않는 IVF 사례 필터링
+no_special_case = ivf_egg_retrieval_null[~(frozen_egg | donor_egg | frozen_embryo | donor_embryo)]
+
+# 남은 0.01% 사례의 개수 확인
+no_special_case_count = len(no_special_case)
+
+# 주요 특징 분석: 시술 유형, 특정 시술 유형 분포 확인
+procedure_counts = no_special_case[['시술 유형', '특정 시술 유형']].value_counts()
+
+# 주요 수치형 변수들의 통계 정보 확인
+no_special_case_stats = no_special_case.describe()
+
+# 결과 출력
+no_special_case_count, procedure_counts, no_special_case_stats
+
+# +
+# IVF 시술을 받은 경우 중 난자 채취 경과일이 NULL인 데이터 필터링
+ivf_egg_retrieval_null = df[(df['시술 유형'] == 'IVF') & (df['난자 채취 경과일'].isnull())]
+
+# 각 속성 정의
+frozen_egg = ivf_egg_retrieval_null['해동 난자 수'] >= 1  # 냉동 난자 사용 
+donor_egg = ivf_egg_retrieval_null['난자 출처'] == '기증 제공'  # 기증 난자 사용 
+frozen_embryo = ivf_egg_retrieval_null['동결 배아 사용 여부'] == 1  # 해동된 배아 사용 
+donor_embryo = ivf_egg_retrieval_null['기증 배아 사용 여부'] == 1  # 기증 배아 사용 
+
+# 중복으로 속하는 경우 확인
+multi_category_cases = ivf_egg_retrieval_null[
+    (frozen_egg.astype(int) + donor_egg.astype(int) + frozen_embryo.astype(int) + donor_embryo.astype(int)) > 1
+]
+
+# 중복 케이스 개수 확인
+multi_category_count = len(multi_category_cases)
+
+# 중복된 경우의 조합별 개수 확인
+multi_category_combinations = multi_category_cases.apply(
+    lambda row: f"{'Frozen Egg' if row['해동 난자 수'] >= 1 else ''} "
+                f"{'Donor Egg' if row['난자 출처'] == '기증 제공' else ''} "
+                f"{'Frozen Embryo' if row['동결 배아 사용 여부'] == 1 else ''} "
+                f"{'Donor Embryo' if row['기증 배아 사용 여부'] == 1 else ''}".strip(), axis=1
+).value_counts()
+
+# 결과 출력
+multi_category_count, multi_category_combinations
+
+
+# +
+# IVF 시술을 받은 경우 중 난자 채취 경과일이 NULL이 아닌 데이터(본인 난자 사용 가능성 있는 경우) 필터링
+own_egg_cases = df[(df['시술 유형'] == 'IVF') & (df['난자 채취 경과일'].notnull())]
+
+# 1. 본인 난자 + 외부 난자(기증 난자 또는 동결 난자) 함께 사용한 사례 확인
+own_and_donor_egg = own_egg_cases['난자 출처'] == '기증 제공'  # 본인 난자 + 기증 난자 사용
+own_and_frozen_egg = own_egg_cases['해동 난자 수'] >= 1  # 본인 난자 + 동결 난자 사용
+
+mixed_egg_cases = own_egg_cases[own_and_donor_egg | own_and_frozen_egg]
+
+# 2. 본인 배아 + 외부 배아(기증 배아 또는 동결 배아) 함께 사용한 사례 확인
+own_and_donor_embryo = own_egg_cases['기증 배아 사용 여부'] == 1  # 본인 배아 + 기증 배아 사용
+own_and_frozen_embryo = own_egg_cases['동결 배아 사용 여부'] == 1  # 본인 배아 + 동결 배아 사용
+
+mixed_embryo_cases = own_egg_cases[own_and_donor_embryo | own_and_frozen_embryo]
+
+# 개수 확인
+mixed_egg_cases_count = len(mixed_egg_cases)
+mixed_embryo_cases_count = len(mixed_embryo_cases)
+
+# 조합별 분포 확인
+mixed_egg_cases_distribution = mixed_egg_cases[['난자 출처', '해동 난자 수']].value_counts()
+mixed_embryo_cases_distribution = mixed_embryo_cases[['동결 배아 사용 여부', '기증 배아 사용 여부']].value_counts()
+
+# 결과 출력
+mixed_egg_cases_count, mixed_egg_cases_distribution, mixed_embryo_cases_count, mixed_embryo_cases_distribution
+
+
+# +
+# IVF 시술을 받은 경우 필터링
+ivf_cases = df[df['시술 유형'] == 'IVF'].copy()
+
+# 각 경우의 수를 정의
+ivf_cases['난자/배아 출처'] = '미정'
+
+# 1. 본인 난자 그대로 (난자 채취 O, 외부 난자/배아 X)
+ivf_cases.loc[(ivf_cases['난자 채취 경과일'].notnull()) & 
+              (ivf_cases['해동 난자 수'] < 1) & 
+              (ivf_cases['난자 출처'] != '기증 제공') & 
+              (ivf_cases['동결 배아 사용 여부'] != 1) & 
+              (ivf_cases['기증 배아 사용 여부'] != 1), '난자/배아 출처'] = '본인 난자 그대로'
+
+# 2. 동결 난자 (해동된 난자 O, 기증 난자 X, 동결 배아 X, 기증 배아 X)
+ivf_cases.loc[(ivf_cases['해동 난자 수'] >= 1) & 
+              (ivf_cases['난자 출처'] != '기증 제공') & 
+              (ivf_cases['동결 배아 사용 여부'] != 1) & 
+              (ivf_cases['기증 배아 사용 여부'] != 1), '난자/배아 출처'] = '동결 난자'
+
+# 3. 기증 난자 (난자 출처가 기증 제공)
+ivf_cases.loc[(ivf_cases['난자 출처'] == '기증 제공') & 
+              (ivf_cases['동결 배아 사용 여부'] != 1) & 
+              (ivf_cases['기증 배아 사용 여부'] != 1), '난자/배아 출처'] = '기증 난자'
+
+# 4. 동결 배아 (동결 배아 사용 O, 기증 배아 X, 난자 해동 X)
+ivf_cases.loc[(ivf_cases['동결 배아 사용 여부'] == 1) & 
+              (ivf_cases['기증 배아 사용 여부'] != 1) & 
+              (ivf_cases['해동 난자 수'] < 1) & 
+              (ivf_cases['난자 출처'] != '기증 제공'), '난자/배아 출처'] = '동결 배아'
+
+# 5. 동결 난자 + 동결 배아
+ivf_cases.loc[(ivf_cases['해동 난자 수'] >= 1) & 
+              (ivf_cases['동결 배아 사용 여부'] == 1) & 
+              (ivf_cases['기증 배아 사용 여부'] != 1) & 
+              (ivf_cases['난자 출처'] != '기증 제공'), '난자/배아 출처'] = '동결 난자 + 동결 배아'
+
+# 6. 본인 난자 + 배아 동결
+ivf_cases.loc[(ivf_cases['난자 채취 경과일'].notnull()) & 
+              (ivf_cases['동결 배아 사용 여부'] == 1) & 
+              (ivf_cases['기증 배아 사용 여부'] != 1) & 
+              (ivf_cases['난자 출처'] != '기증 제공'), '난자/배아 출처'] = '본인 난자 + 배아 동결'
+
+# 7. 기증 난자 + 배아 동결
+ivf_cases.loc[(ivf_cases['난자 출처'] == '기증 제공') & 
+              (ivf_cases['동결 배아 사용 여부'] == 1) & 
+              (ivf_cases['기증 배아 사용 여부'] != 1), '난자/배아 출처'] = '기증 난자 + 배아 동결'
+
+# 8. 기증 난자 + 기증 배아
+ivf_cases.loc[(ivf_cases['난자 출처'] == '기증 제공') & 
+              (ivf_cases['기증 배아 사용 여부'] == 1), '난자/배아 출처'] = '기증 난자 + 기증 배아'
+
+# 9. 기증 난자 + 배아 동결 + 기증 배아
+ivf_cases.loc[(ivf_cases['난자 출처'] == '기증 제공') & 
+              (ivf_cases['동결 배아 사용 여부'] == 1) & 
+              (ivf_cases['기증 배아 사용 여부'] == 1), '난자/배아 출처'] = '기증 난자 + 배아 동결 + 기증 배아'
+
+# 10. 동결 난자 + 기증 배아
+ivf_cases.loc[(ivf_cases['해동 난자 수'] >= 1) & 
+              (ivf_cases['기증 배아 사용 여부'] == 1) & 
+              (ivf_cases['난자 출처'] != '기증 제공') & 
+              (ivf_cases['동결 배아 사용 여부'] != 1), '난자/배아 출처'] = '동결 난자 + 기증 배아'
+
+# 11. 본인 난자 + 외부 난자
+ivf_cases.loc[(ivf_cases['난자 채취 경과일'].notnull()) & 
+              (ivf_cases['난자 출처'] == '기증 제공'), '난자/배아 출처'] = '본인 난자 + 외부 난자'
+
+# 12. 본인 배아 + 외부 배아
+ivf_cases.loc[(ivf_cases['난자 채취 경과일'].notnull()) & 
+              (ivf_cases['기증 배아 사용 여부'] == 1), '난자/배아 출처'] = '본인 배아 + 외부 배아'
+
+# 13. 동결 난자 + 동결 배아 + 기증 배아
+ivf_cases.loc[(ivf_cases['해동 난자 수'] >= 1) & 
+              (ivf_cases['동결 배아 사용 여부'] == 1) & 
+              (ivf_cases['기증 배아 사용 여부'] == 1), '난자/배아 출처'] = '동결 난자 + 동결 배아 + 기증 배아'
+
+# 생성된 난자/배아 출처 컬럼 확인
+ivf_cases['난자/배아 출처'].value_counts()
+
+# +
+# 다시 데이터 로드
+
+# 새로운 이진(Binary) 속성 추가
+df['IVF 시술 여부'] = (df['시술 유형'] == 'IVF').astype(int)  # IVF 시술 여부
+
+df['본인 난자 사용 여부'] = df['난자 채취 경과일'].notnull().astype(int)  # 본인 난자 사용 여부
+df['동결 난자 사용 여부'] = (df['해동 난자 수'] >= 1).astype(int)  # 동결 난자 사용 여부
+df['기증 난자 사용 여부'] = (df['난자 출처'] == '기증 제공').astype(int)  # 기증 난자 사용 여부
+
+df['자연 배아 사용 여부'] = df['난자 채취 경과일'].notnull().astype(int)  # 본인 배아 사용 여부
+df['동결 배아 사용 여부'] = (df['동결 배아 사용 여부'] == 1).astype(int)  # 동결 배아 사용 여부
+df['기증 배아 사용 여부'] = (df['기증 배아 사용 여부'] == 1).astype(int)  # 기증 배아 사용 여부
+
+# 새롭게 추가된 이진 컬럼 확인
+binary_columns = ['IVF 시술 여부', '본인 난자 사용 여부', '동결 난자 사용 여부', '기증 난자 사용 여부',
+                  '자연 배아 사용 여부', '동결 배아 사용 여부', '기증 배아 사용 여부']
+
+binary_summary = df[binary_columns].sum().reset_index()
+binary_summary.columns = ['속성', '사용된 사례 수']
+
+binary_summary
+# -
+# ##### 난자혼합경과일 칼럼 분석
+
+# +
+
+# 난자 혼합 경과일 분포 확인
+egg_mixing_days_distribution = df['난자 혼합 경과일'].describe()
+
+# 난자 혼합 경과일의 시술 유형 분포 확인 (IVF 여부)
+egg_mixing_by_treatment = df.groupby('시술 유형')['난자 혼합 경과일'].count()
+
+# 난자 혼합 경과일과 난자 출처 관계 분석
+egg_mixing_vs_source = df.groupby('난자 출처')['난자 혼합 경과일'].describe()
+
+# 결과 출력
+egg_mixing_days_distribution, egg_mixing_by_treatment, egg_mixing_vs_source
+
+
+# +
+# 난자 혼합 경과일이 4일 이상인 데이터 개수 확인
+egg_mixing_above_4_days = df[df['난자 혼합 경과일'] >= 4].shape[0]
+
+# 결과 출력
+egg_mixing_above_4_days
+
+# -
+
+
+
+# +
+# 1. 분포 확인
+embryo_transfer_days_distribution = df['배아 이식 경과일'].describe()
+
+# 2. 시술 유형과 관계 분석 (IVF 여부)
+embryo_transfer_by_treatment = df.groupby('시술 유형')['배아 이식 경과일'].count()
+
+# 3. 배아 이식 경과일과 배아 출처 관계 분석
+embryo_transfer_vs_source = df.groupby('난자 출처')['배아 이식 경과일'].describe()
+
+# 결과 출력
+embryo_transfer_days_distribution, embryo_transfer_by_treatment, embryo_transfer_vs_source
+# -
+
+# ##### 배아이식경과일 칼럼 분석
+
+# +
+# 1. 분포 확인
+embryo_transfer_days_distribution = df['배아 이식 경과일'].describe()
+
+# 2. 시술 유형과 관계 분석 (IVF 여부)
+embryo_transfer_by_treatment = df.groupby('시술 유형')['배아 이식 경과일'].count()
+
+# 3. 배아 이식 경과일과 배아 출처 관계 분석
+embryo_transfer_vs_source = df.groupby('난자 출처')['배아 이식 경과일'].describe()
+
+# 결과 출력
+embryo_transfer_days_distribution, embryo_transfer_by_treatment, embryo_transfer_vs_source
+
+# +
+# 배아 이식 경과일의 결측치 개수 확인
+missing_embryo_transfer_days = df['배아 이식 경과일'].isnull().sum()
+
+# 시술 당시 나이별 중앙값 확인
+age_group_median_check = df.groupby('시술 당시 나이')['배아 이식 경과일'].median()
+
+# 결과 출력
+missing_embryo_transfer_days, age_group_median_check
+
+# -
+
+# ##### 총 생성 배아 수 칼럼 분석
+
+# # 2. 각 칼럼별 의미
+
+# ##### 시술 시기 코드
+
+# +
+# 데이터 다
+# 시술 유형을 숫자로 변환 (DI = 0, IVF = 1)
+df['IVF 시술 여부'] = (df['시술 유형'] == 'IVF').astype(int)
+
+# 1. 시술 시기 코드별 빈도 분석
+treatment_code_counts = df['시술 시기 코드'].value_counts()
+
+# 2. 시술 시기 코드별 시술 당시 나이 분포 확인 (범주형 변수이므로 비율 분석)
+treatment_code_age_distribution = df.groupby('시술 시기 코드')['시술 당시 나이'].value_counts(normalize=True).unstack()
+
+# 3. 시술 시기 코드별 IVF 시술 비율 확인 (IVF 시술 여부 평균 계산)
+treatment_code_ivf_ratio = df.groupby('시술 시기 코드')['IVF 시술 여부'].mean()
+
+# 결과 출력
+treatment_code_counts, treatment_code_age_distribution, treatment_code_ivf_ratio
+
+
+# +
+# 시술 시기 코드별 임신 성공 여부 평균 (타겟값과의 관계 확인)
+treatment_code_pregnancy_rate = df.groupby('시술 시기 코드')['임신 성공 여부'].mean().sort_values(ascending=False)
+
+# 결과 출력
+treatment_code_pregnancy_rate
+
+# -
+
+# ##### 시술 당시 나이
+
+# +
+
+# 시술 유형을 숫자로 변환 (DI = 0, IVF = 1)
+df['IVF 시술 여부'] = (df['시술 유형'] == 'IVF').astype(int)
+
+# 1. 시술 당시 나이 분포 확인
+age_distribution = df['시술 당시 나이'].value_counts(normalize=True).sort_index()
+
+# 2. 시술 당시 나이별 임신 성공 여부 평균 (타깃값과의 관계 확인)
+age_pregnancy_rate = df.groupby('시술 당시 나이')['임신 성공 여부'].mean().sort_index()
+
+# 3. 시술 유형별 임신 성공률 분석
+age_treatment_distribution = df.groupby('시술 당시 나이')['시술 유형'].value_counts(normalize=True).unstack()
+
+# 결과 출력
+age_distribution, age_pregnancy_rate, age_treatment_distribution
+
+# -
+# ##### 시술 유형 - 특정 시술 유형
+
+
+# +
+# 1. 시술 유형 분포 확인
+treatment_distribution = df['시술 유형'].value_counts(normalize=True)
+
+# 2. 특정 시술 유형 분포 확인 (특정 시술 유형 칼럼이 있는 경우)
+if '특정 시술 유형' in df.columns:
+    specific_treatment_distribution = df['특정 시술 유형'].value_counts(normalize=True)
+else:
+    specific_treatment_distribution = "특정 시술 유형 컬럼이 존재하지 않습니다."
+
+# 결과 출력
+treatment_distribution, specific_treatment_distribution
+
+
+# +
+# 1. 시술 유형별 개수 및 비율 확인
+treatment_distribution = df['시술 유형'].value_counts(normalize=True)
+
+# 2. 시술 유형별 특정 시술 유형 분포 확인
+specific_treatment_by_type = df.groupby('시술 유형')['특정 시술 유형'].value_counts(normalize=True).unstack()
+
+# 결과 출력
+treatment_distribution, specific_treatment_by_type
+
+
+# +
+# 특정 시술 유형별 타깃값(임신 성공 여부) 평균 계산
+specific_treatment_pregnancy_rate = df.groupby('특정 시술 유형')['임신 성공 여부'].mean().sort_values(ascending=False)
+
+# 특정 시술 유형별 연령대(시술 당시 나이) 분포 확인
+specific_treatment_age_distribution = df.groupby('특정 시술 유형')['시술 당시 나이'].value_counts(normalize=True).unstack()
+
+# 결과 출력
+specific_treatment_pregnancy_rate, specific_treatment_age_distribution
+
+# -
+
+# ##### 배란 자극 여부
+
+# +
+# 배란 자극 여부 칼럼 분석
+
+# 1. 배란 자극 여부 분포 확인
+ovulation_stimulation_distribution = df['배란 자극 여부'].value_counts(normalize=True)
+
+# 2. 배란 자극 여부별 임신 성공률 분석
+ovulation_stimulation_pregnancy_rate = df.groupby('배란 자극 여부')['임신 성공 여부'].mean()
+
+# 3. 배란 자극 여부별 시술 유형 분석
+ovulation_stimulation_treatment_distribution = df.groupby('배란 자극 여부')['시술 유형'].value_counts(normalize=True).unstack()
+
+# 결과 출력
+ovulation_stimulation_distribution, ovulation_stimulation_pregnancy_rate, ovulation_stimulation_treatment_distribution
+
+# -
+
+# ##### 배란 유도 유형
+
+# +
+# 배란 유도 유형 칼럼 분석
+
+# 1. 배란 유도 유형 분포 확인
+ovulation_induction_distribution = df['배란 유도 유형'].value_counts(normalize=True)
+
+# 2. 배란 유도 유형별 임신 성공률 분석
+ovulation_induction_pregnancy_rate = df.groupby('배란 유도 유형')['임신 성공 여부'].mean().sort_values(ascending=False)
+
+# 3. 배란 유도 유형별 시술 유형 분석
+ovulation_induction_treatment_distribution = df.groupby('배란 유도 유형')['시술 유형'].value_counts(normalize=True).unstack()
+
+# 결과 출력
+ovulation_induction_distribution, ovulation_induction_pregnancy_rate, ovulation_induction_treatment_distribution
+
+# -
+
+# ##### 단일 배아 이식 여부
+
+# +
+
+# 1. 단일 배아 이식 여부 분포 확인
+single_embryo_transfer_distribution = df['단일 배아 이식 여부'].value_counts(normalize=True)
+
+# 2. 단일 배아 이식 여부별 임신 성공률 분석
+single_embryo_pregnancy_rate = df.groupby('단일 배아 이식 여부')['임신 성공 여부'].mean()
+
+# 3. 단일 배아 이식 여부별 시술 유형 분석
+single_embryo_treatment_distribution = df.groupby('단일 배아 이식 여부')['시술 유형'].value_counts(normalize=True).unstack()
+
+# 결과 출력
+single_embryo_transfer_distribution, single_embryo_pregnancy_rate, single_embryo_treatment_distribution
+
+# -
 
 
