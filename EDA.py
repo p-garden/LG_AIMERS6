@@ -13,9 +13,7 @@
 #     name: python3
 # ---
 
-# + [markdown] jp-MarkdownHeadingCollapsed=true
 # # 1. 결측치 분석
-# -
 
 
 
