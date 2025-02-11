@@ -15,10 +15,14 @@ drive.mount('/content/drive')
 
 pip install h2o
 
+!pip install category_encoders
+
 import h2o
 from h2o.automl import H2OAutoML
 import pandas as pd
-
+from h2o.estimators.kmeans import H2OKMeansEstimator
+from h2o.estimators.pca import H2OPrincipalComponentAnalysisEstimator
+import category_encoders as ce
 # 📌 H2O 초기화
 h2o.init()
 
@@ -33,15 +37,38 @@ test_id = test["ID"]
 train = train.drop(columns=["ID"])
 test = test.drop(columns=["ID"])
 
+# 🔹 타겟 분리
+X_train, y_train = train.drop(columns=["임신 성공 여부"]), train["임신 성공 여부"]
+X_test = test.copy()
+
+# ✅ **타깃 인코딩 적용 (카테고리형 변수 변환)**
+categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
+
+# Target Encoding 수행
+target_encoder = ce.TargetEncoder(cols=categorical_cols, smoothing=0.3)
+X_train[categorical_cols] = target_encoder.fit_transform(X_train[categorical_cols], y_train)
+X_test[categorical_cols] = target_encoder.transform(X_test[categorical_cols])
+
+print(f"✅ 타깃 인코딩 적용된 컬럼: {categorical_cols}")
+
 # 🔹 H2O 데이터 변환 (전처리는 H2O가 자동으로 처리)
 train_h2o = h2o.H2OFrame(train)
 test_h2o = h2o.H2OFrame(test)
 
-# 🔹 AutoML 모델 학습
-aml = H2OAutoML(max_runtime_secs=3600)  # 최대 1시간 학습
-aml.train(x=[col for col in train.columns if col != "임신 성공 여부"], y="임신 성공 여부", training_frame=train_h2o)
 
-# 📌 학습 로그 출력
+# ✅ **2️⃣ K-Means Clustering 적용 (새로운 군집 피처 생성)**
+kmeans = H2OKMeansEstimator(k=5, standardize=True)
+kmeans.train(x=train_h2o.columns, training_frame=train_h2o)
+train_h2o["kmeans_cluster"] = kmeans.predict(train_h2o)["predict"]
+test_h2o["kmeans_cluster"] = kmeans.predict(test_h2o)["predict"]
+
+# 🔹 **AutoML 실행**
+aml = H2OAutoML(max_runtime_secs=10800, seed=42)
+#aml = H2OAutoML(max_runtime_secs=10800, seed=42, sort_metric="AUC")
+
+aml.train(x=[col for col in train_h2o.columns if col != "임신 성공 여부"], y="임신 성공 여부", training_frame=train_h2o)
+
+#📌 학습 로그 출력
 print("\n🏆 [H2O AutoML 리더보드]")
 leaderboard = aml.leaderboard.as_data_frame()
 print(leaderboard)
@@ -52,15 +79,8 @@ print(f"\n💾 [최적 모델 저장 완료] 경로: {model_path}")
 
 # 예측
 preds = aml.leader.predict(test_h2o).as_data_frame().values[:, 0]
-
-# `predict_proba`의 반환값이 DataFrame인지 NumPy 배열인지 확인 후 처리
-if isinstance(preds, pd.DataFrame):
-    preds = preds.iloc[:, 1]  # DataFrame이면 iloc 사용
-else:
-    preds = preds[:, 1]  # NumPy 배열이면 일반 인덱싱 사용
-
 # 📌 결과 저장 (ID 컬럼 포함)
-submission = pd.DataFrame({"ID": test["ID"], "probability": preds})
+submission = pd.DataFrame({"ID": test_id, "probability": preds})
 
 submission.to_csv("submission_h2o.csv", index=False, encoding="cp949")
 print("\n✅ [결과 저장 완료] 파일: submission_h2o.csv")
@@ -69,40 +89,21 @@ print("\n✅ [결과 저장 완료] 파일: submission_h2o.csv")
 h2o.shutdown(prompt=False)
 print("\n🚀 [H2O 세션 종료 완료]")
 
+# 예측
+preds = aml.leader.predict(test_h2o).as_data_frame().values[:, 0]
+# 📌 결과 저장 (ID 컬럼 포함)
+submission = pd.DataFrame({"ID": test_id, "probability": preds})
+
+submission.to_csv("submission_h2o.csv", index=False, encoding="cp949")
+print("\n✅ [결과 저장 완료] 파일: submission_h2o.csv")
+
+# 📌 H2O 종료
+h2o.shutdown(prompt=False)
+print("\n🚀 [H2O 세션 종료 완료]")
+
+submission
+
 from google.colab import files
 files.download("submission_h2o.csv")
 
-
-
-import h2o
-from h2o.automl import H2OAutoML
-import pandas as pd
-from sklearn.model_selection import train_test_split
-
-# H2O 초기화
-h2o.init()
-
-# 데이터 로드 및 전처리
-df = pd.read_csv("data/train.csv").drop(columns=["ID"])
-df = df.fillna(0)  # 결측값 처리
-df = pd.get_dummies(df)  # 원-핫 인코딩
-
-# 데이터 분할
-X_train, X_test, y_train, y_test = train_test_split(df.drop(columns=["임신 성공 여부"]), df["임신 성공 여부"], test_size=0.2, random_state=42)
-
-
-# H2O 데이터 변환
-train_h2o = h2o.H2OFrame(pd.concat([X_train, y_train], axis=1))
-test_h2o = h2o.H2OFrame(X_test)
-
-# AutoML 모델 학습
-aml = H2OAutoML(max_runtime_secs=3600)  # 최대 1시간 학습
-aml.train(x=X_train.columns.tolist(), y="임신 성공 여부", training_frame=train_h2o)
-
-# 예측 및 저장
-preds = aml.leader.predict(test_h2o).as_data_frame().values[:, 0]
-submission = pd.DataFrame({"ID": range(len(preds)), "임신 성공 여부": preds})
-submission.to_csv("submission_h2o.csv", index=False)
-
-print("✅ H2O AutoML 완료!")
-h2o.shutdown(prompt=False)
+"""#### 직접 생성한 피처들"""

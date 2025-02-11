@@ -17,7 +17,8 @@ pip install mljar-supervised
 
 from supervised.automl import AutoML
 import pandas as pd
-
+from sklearn.model_selection import train_test_split
+import category_encoders as ce
 # 📌 데이터 로드
 train = pd.read_csv("data/train.csv")
 test = pd.read_csv("data/test.csv")
@@ -33,28 +34,91 @@ test = test.drop(columns=["ID"])
 X_train = train.drop(columns=["임신 성공 여부"])
 y_train = train["임신 성공 여부"]
 
-# 📌 MLJAR AutoML 학습
-automl = AutoML(mode="Compete", total_time_limit=3600)
+# ✅ **타깃 인코딩 적용 (카테고리형 변수 변환)**
+categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
+
+# Target Encoding 수행
+target_encoder = ce.TargetEncoder(cols=categorical_cols, smoothing=0.3)
+X_train[categorical_cols] = target_encoder.fit_transform(X_train[categorical_cols], y_train)
+X_test[categorical_cols] = target_encoder.transform(X_test[categorical_cols])
+print(f"✅ 타깃 인코딩 적용된 컬럼: {categorical_cols}")
+
+automl = AutoML(
+    mode="Compete",
+    total_time_limit=10800,
+    golden_features=True,  # 중요한 피처 생성
+    kmeans_features=True,  # K-means 기반 피처 생성
+    mix_encoding=True,  # 다양한 인코딩 적용
+    #    eval_metric="auc"  # 평가 기준을 ROC-AUC로 설정
+
+)
+
 automl.fit(X_train, y_train)
 
-# 예측
-preds = automl.predict_proba(test)[:, 1]
+import pandas as pd
+import category_encoders as ce
+import joblib
 
-# `predict_proba`의 반환값이 DataFrame인지 NumPy 배열인지 확인 후 처리
-if isinstance(preds, pd.DataFrame):
-    preds = preds.iloc[:, 1]  # DataFrame이면 iloc 사용
-else:
-    preds = preds[:, 1]  # NumPy 배열이면 일반 인덱싱 사용
+# 📌 데이터 로드
+train = pd.read_csv("data/train.csv")
+test = pd.read_csv("data/test.csv")
+
+# 📌 ID 컬럼 저장
+test_id = test["ID"]
+
+# 📌 ID 제거
+train = train.drop(columns=["ID"])
+test = test.drop(columns=["ID"])
+
+# 📌 타겟 분리
+X_train = train.drop(columns=["임신 성공 여부"])
+y_train = train["임신 성공 여부"]
+X_test = test.copy()
+
+# ✅ Train과 Test의 카테고리형 변수 동일하게 유지
+categorical_cols = list(set(X_train.select_dtypes(include=["object"]).columns) | set(X_test.select_dtypes(include=["object"]).columns))
+print(f"✅ 카테고리형 변수: {categorical_cols}")
+
+# ✅ **타깃 인코딩 적용**
+target_encoder = ce.TargetEncoder(cols=categorical_cols, smoothing=0.3)
+X_train[categorical_cols] = target_encoder.fit_transform(X_train[categorical_cols], y_train)
+X_test[categorical_cols] = target_encoder.transform(X_test[categorical_cols])
+
+# ✅ 타깃 인코더 및 카테고리 변수 저장 (추후 사용)
+joblib.dump(target_encoder, "target_encoder.pkl")
+joblib.dump(categorical_cols, "categorical_cols.pkl")
+print("✅ 타깃 인코더 및 컬럼 정보 저장 완료!")
+
+# 📌 인코더 및 컬럼 정보 로드
+target_encoder = joblib.load("target_encoder.pkl")
+categorical_cols = joblib.load("categorical_cols.pkl")
+print("✅ 타깃 인코더 및 컬럼 정보 로드 완료")
+
+# 📌 테스트 데이터 로드
+test = pd.read_csv("data/test.csv")
+X_test = test.drop(columns=["ID"])
+
+# 📌 카테고리 컬럼 타깃 인코딩 적용
+X_test[categorical_cols] = target_encoder.transform(X_test[categorical_cols])
+
+# 📌 예측 수행
+preds = automl.predict_proba(X_test)[:, 1]
+
+# 📌 결과 저장
+submission = pd.DataFrame({"ID": test_id, "probability": preds})
+submission.to_csv("submission_mljar.csv", index=False, encoding="utf-8-sig")
+
+print("\n✅ [결과 저장 완료] 파일: submission_mljar.csv")
 
 # 📌 결과 저장 (ID 컬럼 포함)
 submission = pd.DataFrame({"ID": test_id, "probability": preds})
 submission.to_csv("submission_mljar.csv", index=False, encoding="cp949")
 print("\n✅ [결과 저장 완료] 파일: submission_mljar.csv")
 
+submission
+
 from google.colab import files
 files.download("submission_mljar.csv")
-
-submission
 
 
 
@@ -80,3 +144,4 @@ submission = pd.DataFrame({"ID": X_test["ID"], "임신 성공 여부": preds})
 submission.to_csv("submission_mljar.csv", index=False)
 
 print("✅ MLJAR AutoML 완료!")
+
